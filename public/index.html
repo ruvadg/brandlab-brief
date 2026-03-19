@@ -331,23 +331,20 @@ async function callAPI(userText){
     var txt=data.text||'Sin respuesta.';
     hist.push({role:'assistant',content:txt});
     rmTyping();addMsg('a',txt);
+    // Only trigger completion on very specific signals — never on welcome/intro messages
     var tl=txt.toLowerCase();
-    var isComplete=txt.includes('===FORMULARIO MAESTRO===')||
-      txt.includes('===CONCLUSION DE MARCA===')||
-      txt.includes('===JSON===')||
-      txt.includes('FORMULARIO MAESTRO COMPLETADO')||
-      txt.includes('FORMULARIO COMPLETADO')||
-      tl.includes('formulario maestro completado')||
-      tl.includes('formulario completado')||
-      tl.includes('formulario esta completo')||
-      tl.includes('formulario est\u00e1 completo')||
-      tl.includes('has completado el formulario')||
-      tl.includes('completaste el formulario')||
-      tl.includes('brief completado')||
-      tl.includes('brief maestro completado')||
-      tl.includes('ruva estudio')||
-      tl.includes('guardar progreso')||
-      (/secci[o\xf3]n\s+k/i.test(txt)&&/complet|finaliz/i.test(txt));
+    var msgCount = hist.filter(function(m){return m.role==='user';}).length;
+    var isComplete = msgCount >= 5 && (
+      txt.includes('===FORMULARIO MAESTRO===') ||
+      txt.includes('===CONCLUSION DE MARCA===') ||
+      txt.includes('===JSON===') ||
+      txt.includes('!FORMULARIO MAESTRO COMPLETADO!') ||
+      tl.includes('completaste las 11 secciones') ||
+      tl.includes('completaste los 11 secciones') ||
+      tl.includes('formulario maestro completado') ||
+      tl.includes('haz clic en descargar brief') ||
+      (/secci[oó]n\s+k.*complet/i.test(txt) && msgCount >= 10)
+    );
     if(isComplete)setTimeout(function(){showCompletion();},600);
   }catch(e){rmTyping();addMsg('a','Error: '+e.message+'. Intenta de nuevo.');}
   busy=false;setTimeout(function(){var tx=document.getElementById('tx');if(tx)tx.focus();},100);
