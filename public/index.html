@@ -382,237 +382,67 @@ function saveProgress(){
 
 // ── DOWNLOAD FINAL DOCX
 function downloadFinalDocx(){
-  // Build content from conversation
-  var sections = [];
-  var SNAMES = {A:'Datos Basicos',B:'Oferta',C:'Cliente y Mercado',D:'Evidencia',
-    E:'Competencia',F:'Entorno y Tendencias',G:'Auditoria Interna',
-    H:'Ventas y Canales',I:'Activos',J:'Stakeholders',K:'Permisos'};
+  // Show loading state on button
+  var btn = document.getElementById('hdrDlBtn');
+  var cardBtn = document.querySelector('#dlCard button');
+  var originalText = btn ? btn.innerHTML : '';
+  if(btn) btn.innerHTML = '<span style="animation:pu 1s infinite;display:inline-block">&#8635;</span> Generando...';
+  if(cardBtn) cardBtn.textContent = 'Generando documento...';
 
-  var currentSection = null;
-  var qaItems = [];
-
-  hist.forEach(function(m){
-    if(m.role==='assistant'){
-      var lines = m.content.split('\n');
-      lines.forEach(function(line){
-        var t = line.trim();
-        if(!t) return;
-        var sm = t.match(/SECC[IÍ]ON\s+([A-K])\s*[—\-\s]/i);
-        if(sm){ currentSection = sm[1].toUpperCase(); return; }
-        if(t.includes('**') && t.includes('?')){
-          var q = t.replace(/\*\*/g,'').trim();
-          qaItems.push({sec:currentSection, q:q, a:null});
-        }
-      });
-    } else if(m.role==='user'){
-      var c = m.content;
-      if(c==='INICIAR FORMULARIO'||c.startsWith('REANUDAR')||c.startsWith('[NOTA')||c==='CONTINUAR'||c==='Necesito ayuda'||c==='Continuar formulario guardado') return;
-      // Find last unanswered question and assign
-      for(var i=qaItems.length-1;i>=0;i--){
-        if(qaItems[i].a===null){ qaItems[i].a=c; break; }
-      }
+  // Call compile endpoint — Claude structures all Q&A
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action: 'compile', messages: hist })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.text){
+      var blob = new Blob([data.text], {type: 'text/plain;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'BRANDLAB_Brief_Maestro.txt';
+      a.click();
+      URL.revokeObjectURL(url);
+      if(btn) btn.innerHTML = '&#10003; Descargado';
+      if(cardBtn) cardBtn.textContent = '✓ Descargado';
+    } else {
+      throw new Error(data.error || 'Sin contenido');
     }
+  })
+  .catch(function(err){
+    console.error('Download error:', err);
+    // Fallback: raw conversation
+    fallbackTxt();
+    if(btn) btn.innerHTML = originalText;
+    if(cardBtn) cardBtn.textContent = 'Descargar Brief (.txt)';
   });
-
-  // Group by section
-  var secMap = {};
-  qaItems.forEach(function(item){
-    var s = item.sec||'Z';
-    if(!secMap[s]) secMap[s]=[];
-    secMap[s].push(item);
-  });
-
-  // Extract conclusion
-  var conclusion = '';
-  for(var i=hist.length-1;i>=0;i--){
-    if(hist[i].role==='assistant'){
-      var txt = hist[i].content;
-      if(txt.includes('CONCLUSION DE MARCA')){
-        var idx = txt.indexOf('CONCLUSION DE MARCA');
-        var part = txt.slice(idx+20);
-        var endIdx = part.indexOf('===');
-        conclusion = (endIdx>0 ? part.slice(0,endIdx) : part).replace(/\*\*/g,'').trim();
-        break;
-      }
-      if(txt.includes('FORMULARIO MAESTRO COMPLETADO')||txt.includes('formulario esta completo')||txt.includes('formulario está completo')){
-        conclusion = txt.replace(/\*\*/g,'').trim();
-        break;
-      }
-    }
-  }
-
-  // Build the DOCX XML from scratch (no library needed)
-  generateDocxBlob(secMap, SNAMES, conclusion, qaItems);
-}
-
-function generateDocxBlob(secMap, SNAMES, conclusion, allItems){
-  var date = new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'});
-  var secOrder = ['A','B','C','D','E','F','G','H','I','J','K'];
-
-  // Build document.xml content
-  var body = '';
-
-  function para(text, opts){
-    opts = opts||{};
-    var rPr = '';
-    if(opts.bold) rPr += '<w:b/>';
-    if(opts.color) rPr += '<w:color w:val="'+opts.color+'"/>';
-    if(opts.size) rPr += '<w:sz w:val="'+opts.size+'"/><w:szCs w:val="'+opts.size+'"/>';
-    var pPr = '';
-    if(opts.shading) pPr += '<w:shd w:val="clear" w:color="auto" w:fill="'+opts.shading+'"/>';
-    if(opts.spacing) pPr += '<w:spacing w:before="'+( opts.spacing.before||0)+'" w:after="'+(opts.spacing.after||0)+'"/>';
-    if(opts.indent) pPr += '<w:ind w:left="'+(opts.indent||0)+'"/>';
-    if(opts.border){
-      pPr += '<w:pBdr><w:left w:val="single" w:sz="24" w:space="6" w:color="3B82F6"/></w:pBdr>';
-    }
-    // Escape XML
-    var safe = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return '<w:p>'+(pPr?'<w:pPr>'+pPr+'</w:pPr>':'')+
-      '<w:r>'+(rPr?'<w:rPr>'+rPr+'</w:rPr>':'')+
-      '<w:t xml:space="preserve">'+safe+'</w:t></w:r></w:p>';
-  }
-
-  function pageBreak(){
-    return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-  }
-
-  function hline(){
-    return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="1D4070"/></w:pBdr><w:spacing w:before="100" w:after="100"/></w:pPr></w:p>';
-  }
-
-  // COVER
-  body += para('', {spacing:{before:400,after:200}});
-  body += para('RUVA ESTUDIO', {bold:true, color:'3B82F6', size:52, spacing:{before:0,after:100}});
-  body += para('Brief Wizard  ·  Powered by Ruva Estudio', {color:'888888', size:20, spacing:{before:0,after:200}});
-  body += para('BRIEF MAESTRO DE BRANDING', {bold:true, size:72, spacing:{before:0,after:100}});
-  body += para('Documento estrategico de marca', {color:'888888', size:24, spacing:{before:0,after:200}});
-  body += para('Fecha: '+date, {color:'888888', size:20, spacing:{before:0,after:100}});
-  body += para('Secciones completadas: '+Object.keys(SEC).filter(function(k){return SEC[k]===2;}).length+' / 11', {color:'888888', size:20, spacing:{before:0,after:400}});
-  body += hline();
-  body += pageBreak();
-
-  // SECTIONS
-  secOrder.forEach(function(sid){
-    var items = secMap[sid];
-    if(!items || items.length===0) return;
-    var sname = SNAMES[sid]||sid;
-
-    body += para('SECCION '+sid+' — '+sname.toUpperCase(), {bold:true, size:26, color:'3B82F6', border:true, shading:'0A1628', spacing:{before:400,after:200}});
-
-    items.forEach(function(item, idx){
-      body += para((idx+1)+'.  '+item.q, {bold:true, size:22, color:'D1D5DB', spacing:{before:200,after:80}});
-      if(item.a){
-        body += para('R/  '+item.a, {size:21, color:'7EB3FF', shading:'080E1F', indent:160, border:true, spacing:{before:60,after:160}});
-      } else {
-        body += para('(Sin respuesta registrada)', {size:20, color:'666666', spacing:{before:60,after:160}});
-      }
-    });
-    body += hline();
-  });
-
-  // CONCLUSION
-  if(conclusion){
-    body += pageBreak();
-    body += para('CONCLUSION ESTRATEGICA DE MARCA', {bold:true, size:28, color:'3B82F6', border:true, spacing:{before:0,after:300}});
-    conclusion.split('\n').forEach(function(line){
-      var t = line.trim();
-      if(!t) return;
-      body += para(t, {size:22, color:'C8CED8', shading:'080E1F', border:true, indent:120, spacing:{before:80,after:80}});
-    });
-  }
-
-  // CLOSING
-  body += pageBreak();
-  body += para('Es momento de enviar este brief al equipo de Ruva Estudio.', {bold:true, size:24, color:'FFFFFF', shading:'1D4ED8', indent:200, spacing:{before:200,after:100}});
-  body += para('Comparte este documento con tu estratega para comenzar a construir tu marca.', {size:20, color:'BFDBFE', shading:'1D4ED8', indent:200, spacing:{before:0,after:400}});
-
-  var docXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-    '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '+
-    'xmlns:mo="http://schemas.microsoft.com/office/mac/office/2008/main" '+
-    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '+
-    'xmlns:mv="urn:schemas-microsoft-com:mac:vml" '+
-    'xmlns:o="urn:schemas-microsoft-com:office:office" '+
-    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '+
-    'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '+
-    'xmlns:v="urn:schemas-microsoft-com:vml" '+
-    'xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" '+
-    'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '+
-    'xmlns:w10="urn:schemas-microsoft-com:office:word" '+
-    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '+
-    'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '+
-    'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '+
-    'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '+
-    'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '+
-    'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="mv mo w14 wp14">'+
-    '<w:body>'+body+
-    '<w:sectPr><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>'+
-    '</w:body></w:document>';
-
-  // Build minimal DOCX ZIP structure using base64-encoded parts
-  buildAndDownloadDocx(docXml);
-}
-
-function buildAndDownloadDocx(docXml){
-  // Use JSZip if available (from cdnjs), otherwise use our own minimal zip builder
-  if(window.JSZip){
-    var zip = new JSZip();
-    addDocxFiles(zip, docXml);
-    zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})
-      .then(function(blob){ triggerDownload(blob,'BRANDLAB_Brief_Maestro.docx'); });
-  } else {
-    // Load JSZip on demand from cdnjs (allowed CDN)
-    var s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    s.onload = function(){
-      var zip = new JSZip();
-      addDocxFiles(zip, docXml);
-      zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})
-        .then(function(blob){ triggerDownload(blob,'BRANDLAB_Brief_Maestro.docx'); })
-        .catch(function(){ fallbackTxt(); });
-    };
-    s.onerror = function(){ fallbackTxt(); };
-    document.head.appendChild(s);
-  }
-}
-
-function addDocxFiles(zip, docXml){
-  zip.file('[Content_Types].xml',
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
-    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
-    '<Default Extension="xml" ContentType="application/xml"/>'+
-    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'+
-    '</Types>');
-  zip.file('_rels/.rels',
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
-    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'+
-    '</Relationships>');
-  zip.file('word/_rels/document.xml.rels',
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
-    '</Relationships>');
-  zip.file('word/document.xml', docXml);
-}
-
-function triggerDownload(blob, filename){
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href=url; a.download=filename; a.click();
-  URL.revokeObjectURL(url);
 }
 
 function fallbackTxt(){
-  var lines = ['BRANDLAB — BRIEF MAESTRO DE BRANDING','Ruva Estudio',''];
+  var lines = [
+    'BRANDLAB — BRIEF MAESTRO DE BRANDING',
+    'Ruva Estudio  —  ' + new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'}),
+    '='.repeat(60), ''
+  ];
   hist.forEach(function(m){
-    if(m.role==='user'&&m.content!=='INICIAR FORMULARIO'&&!m.content.startsWith('REANUDAR')){
-      lines.push('[CLIENTE]'); lines.push(m.content); lines.push('');
+    if(m.role==='user' && m.content!=='INICIAR FORMULARIO' && !m.content.startsWith('REANUDAR') && m.content!=='CONTINUAR' && m.content!=='Necesito ayuda'){
+      lines.push('[ CLIENTE ]');
+      lines.push(m.content);
+      lines.push('');
     } else if(m.role==='assistant'){
-      lines.push('[BRANDLAB IA]'); lines.push(m.content.replace(/\*\*/g,'')); lines.push('---'); lines.push('');
+      lines.push('[ BRANDLAB IA ]');
+      lines.push(m.content.replace(/\*\*/g,''));
+      lines.push('-'.repeat(40));
+      lines.push('');
     }
   });
-  var blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
-  triggerDownload(blob,'BRANDLAB_Brief_Maestro.txt');
+  var blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── SHOW COMPLETION CARD
@@ -640,9 +470,9 @@ function showCompletion(){
     '<div style="font-size:12px;color:#666;line-height:1.6">Descarga tu brief y envialo al equipo de <strong style="color:#93c5fd">Ruva Estudio</strong> para comenzar a construir tu marca.</div>'+
     '<button onclick="downloadFinalDocx()" style="background:#3b82f6;color:#fff;border:none;font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:14px 20px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;-webkit-tap-highlight-color:transparent">'+
       '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>'+
-      'Descargar Brief en Word (.docx)'+
+      'Descargar Brief (.txt)'+
     '</button>'+
-    '<div style="font-family:monospace;font-size:9px;color:#2a2a2a;text-align:center">Incluye todas las secciones, preguntas, respuestas y conclusion estrategica</div>';
+    '<div style="font-family:monospace;font-size:9px;color:#2a2a2a;text-align:center">Claude organiza y estructura todas tus respuestas — listo para analizar</div>';
   ch.appendChild(card);ch.scrollTop=ch.scrollHeight;
   launchConfetti();
 }
