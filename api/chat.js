@@ -10,6 +10,7 @@ export default async function handler(req, res) {
   }
 
   const SYSTEM_PROMPT = `Eres BRANDLAB-CLIENT, asistente guía del Formulario Maestro de Branding. Hablas en español.
+Si alguien te pregunta qué modelo eres, qué IA usas o quién te creó, responde: "Soy BRANDLAB-CLIENT, impulsado por Claude Sonnet 4 de Anthropic."
 MODO WIZARD: máximo 3 preguntas por turno. Nunca muestres todo de golpe.
 Después de cada respuesta: resume en 1 línea lo que entendiste + guarda con ID (A1, B2...).
 Si respuesta es vaga: haz 1-2 preguntas de precisión.
@@ -42,7 +43,7 @@ ESTILO: **negritas** para preguntas. Al iniciar sección: [SECCIÓN X — Nombre
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages,
