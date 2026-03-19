@@ -383,256 +383,198 @@ function saveProgress(){
 
 // ── DOWNLOAD FINAL DOCX
 function downloadFinalDocx(){
-  if(!window.docx){
-    // Auto-retry: load docx on demand if CDN hasn't loaded yet
-    var s=document.createElement('script');
-    s.src='https://unpkg.com/docx@7.8.2/build/index.umd.js';
-    s.onload=function(){ setTimeout(downloadFinalDocx,300); };
-    s.onerror=function(){
-      // Fallback to cdnjs
-      var s2=document.createElement('script');
-      s2.src='https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.umd.min.js';
-      s2.onload=function(){ setTimeout(downloadFinalDocx,300); };
-      document.head.appendChild(s2);
+  // Build plain text content from full conversation
+  var lines = [];
+  var SNAMES = {A:'Datos Basicos',B:'Oferta',C:'Cliente y Mercado',D:'Evidencia',
+    E:'Competencia',F:'Entorno y Tendencias',G:'Auditoria Interna',
+    H:'Ventas y Canales',I:'Activos',J:'Stakeholders',K:'Permisos'};
+
+  lines.push('BRANDLAB — BRIEF MAESTRO DE BRANDING');
+  lines.push('Generado por Ruva Estudio  |  ' + new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'}));
+  lines.push('');
+  lines.push('='.repeat(60));
+  lines.push('');
+
+  hist.forEach(function(m) {
+    if (m.role === 'user') {
+      var c = m.content;
+      if (c === 'INICIAR FORMULARIO' || c.startsWith('REANUDAR') || c.startsWith('[NOTA') || c === 'CONTINUAR' || c === 'Necesito ayuda' || c === 'Continuar formulario guardado') return;
+      lines.push('[ CLIENTE ]');
+      lines.push(c);
+      lines.push('');
+    } else if (m.role === 'assistant') {
+      lines.push('[ BRANDLAB IA ]');
+      // Clean up markdown
+      var clean = m.content.replace(/\*\*/g,'').replace(/\[SECCI/g,'SECCI').replace(/\]/g,'');
+      lines.push(clean);
+      lines.push('-'.repeat(40));
+      lines.push('');
+    }
+  });
+
+  var fullText = lines.join('\n');
+
+  // Try docx if available, otherwise fallback to txt
+  if (window.docx) {
+    buildDocx(fullText);
+  } else {
+    // Load on demand
+    var s = document.createElement('script');
+    s.src = 'https://unpkg.com/docx@7.8.2/build/index.umd.js';
+    s.onload = function(){ buildDocx(fullText); };
+    s.onerror = function(){
+      // Final fallback: just download as .txt
+      var blob = new Blob([fullText], {type:'text/plain;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
+      URL.revokeObjectURL(url);
     };
     document.head.appendChild(s);
-    return;
   }
-  var D=window.docx;
+}
 
-  // Parse conversation into clean sections
-  var SNAMES_ES={A:'Datos Basicos',B:'Oferta',C:'Cliente y Mercado',D:'Evidencia y Voz del Cliente',E:'Competencia y Referencias',F:'Entorno y Tendencias',G:'Auditoria Interna',H:'Ventas, Canales y Metricas',I:'Activos Existentes',J:'Stakeholders y Decisiones',K:'Permisos para Investigacion'};
-  var sections=[];
-  var currentSec=null;
-  var currentQ=null;
-  var conclusionText='';
+function buildDocx(fullText){
+  try {
+    var D = window.docx;
+    var children = [];
 
-  hist.forEach(function(m){
-    if(m.role==='assistant'){
-      // Extract conclusion
-      if(m.content.includes('===CONCLUSION DE MARCA===')){
-        var parts=m.content.split('===CONCLUSION DE MARCA===');
-        if(parts[1]){var end=parts[1].indexOf('===');conclusionText=end>0?parts[1].slice(0,end).trim():parts[1].trim();}
+    // Title block
+    children.push(new D.Paragraph({
+      children:[new D.TextRun({text:'BRIEF MAESTRO DE BRANDING',bold:true,size:52,font:'Arial'})],
+      spacing:{after:200}
+    }));
+    children.push(new D.Paragraph({
+      children:[new D.TextRun({text:'Ruva Estudio  —  '+new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'}),size:22,color:'888888',font:'Arial'})],
+      spacing:{after:400},
+      border:{bottom:{style:D.BorderStyle.SINGLE,size:4,color:'3B82F6',space:4}}
+    }));
+
+    // Parse conversation into blocks
+    var blocks = [];
+    var curRole = null, curLines = [];
+
+    fullText.split('\n').forEach(function(line){
+      if(line==='[ CLIENTE ]'){
+        if(curRole&&curLines.length) blocks.push({role:curRole,text:curLines.join('\n').trim()});
+        curRole='user'; curLines=[];
+      } else if(line==='[ BRANDLAB IA ]'){
+        if(curRole&&curLines.length) blocks.push({role:curRole,text:curLines.join('\n').trim()});
+        curRole='ai'; curLines=[];
+      } else if(line==='BRANDLAB — BRIEF MAESTRO DE BRANDING'||line.startsWith('Generado por')||line.startsWith('=')||line.startsWith('-')){
+        // skip header lines
+      } else {
+        curLines.push(line);
       }
-      var lines=m.content.split('\n');
-      lines.forEach(function(line){
-        var t=line.trim();if(!t)return;
-        // Section header
-        var sm=t.match(/^\[?SECCI[O\xd3]N\s+([A-K])\s*[\u2014\-]/i);
-        if(sm){
-          currentSec=sm[1].toUpperCase();
-          if(!sections.find(function(s){return s.id===currentSec;}))
-            sections.push({id:currentSec,name:SNAMES_ES[currentSec]||'',items:[]});
-          return;
+    });
+    if(curRole&&curLines.length) blocks.push({role:curRole,text:curLines.join('\n').trim()});
+
+    blocks.forEach(function(block){
+      if(!block.text.trim()) return;
+
+      if(block.role==='ai'){
+        // Check if this is a section header
+        var secMatch = block.text.match(/SECC[IÍ]ON\s+([A-K])\s*[—\-]/i);
+        if(secMatch){
+          children.push(new D.Paragraph({
+            children:[new D.TextRun({text:block.text.split('\n')[0].toUpperCase(),bold:true,size:22,color:'3B82F6',font:'Arial'})],
+            spacing:{before:400,after:160},
+            border:{left:{style:D.BorderStyle.SINGLE,size:20,color:'3B82F6',space:6}}
+          }));
+          // Rest of lines
+          block.text.split('\n').slice(1).forEach(function(line){
+            if(!line.trim()) return;
+            children.push(new D.Paragraph({
+              children:[new D.TextRun({text:line.trim(),size:20,color:'9CA3AF',font:'Arial'})],
+              spacing:{before:60,after:60}
+            }));
+          });
+        } else {
+          // Regular AI message — show each line
+          block.text.split('\n').forEach(function(line){
+            var t = line.trim();
+            if(!t) { children.push(new D.Paragraph({spacing:{after:80}})); return; }
+            // Question lines (contain ?)
+            var isQ = t.includes('?') && t.length < 200;
+            children.push(new D.Paragraph({
+              children:[new D.TextRun({text:t,bold:isQ,size:isQ?20:19,color:isQ?'D1D5DB':'9CA3AF',font:'Arial'})],
+              spacing:{before:isQ?160:40,after:40}
+            }));
+          });
         }
-        // Bold question
-        var qm=t.match(/\*\*([^*]{8,})\*\*/);
-        if(qm){currentQ=qm[1].replace(/\*\*/g,'').trim();return;}
-      });
-    } else if(m.role==='user'){
-      var c=m.content;
-      if(c==='INICIAR FORMULARIO'||c.startsWith('REANUDAR')||c.startsWith('[NOTA')||c==='CONTINUAR'||c==='Necesito ayuda'||c==='Continuar formulario guardado')return;
-      if(currentQ&&currentSec){
-        var sec=sections.find(function(s){return s.id===currentSec;});
-        if(!sec){sec={id:currentSec,name:SNAMES_ES[currentSec]||'',items:[]};sections.push(sec);}
-        sec.items.push({q:currentQ,a:c});
-        currentQ=null;
+
+      } else {
+        // User answer — highlighted box
+        children.push(new D.Paragraph({
+          children:[new D.TextRun({text:'Respuesta:',bold:true,size:17,color:'3B82F6',font:'Arial'})],
+          spacing:{before:120,after:60}
+        }));
+        block.text.split('\n').forEach(function(line){
+          if(!line.trim()) return;
+          children.push(new D.Paragraph({
+            children:[new D.TextRun({text:line.trim(),size:20,color:'7EB3FF',font:'Arial'})],
+            spacing:{before:40,after:40},
+            shading:{type:D.ShadingType.SOLID,color:'080E1F'},
+            border:{
+              left:{style:D.BorderStyle.SINGLE,size:16,color:'3B82F6',space:6},
+              top:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2},
+              bottom:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2},
+              right:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2}
+            },
+            indent:{left:120,right:120}
+          }));
+        });
+        children.push(new D.Paragraph({
+          border:{bottom:{style:D.BorderStyle.SINGLE,size:2,color:'1A1A2E',space:4}},
+          spacing:{before:120,after:0}
+        }));
       }
-    }
-  });
-
-  // Build DOCX
-  var children=[];
-  var blue='3B82F6',darkBlue='0A1628',white='F0EDE6',gray='888888';
-
-  // ── COVER
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'',break:1})],spacing:{before:0,after:0}
-  }));
-
-  // Logo text (since we can't easily embed image in docx from browser)
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'RUVA ESTUDIO',bold:true,size:48,color:white,font:'Arial'})],
-    spacing:{before:400,after:100}
-  }));
-
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'Brief Wizard  ·  Powered by Ruva Estudio',size:18,color:gray,font:'Arial'})],
-    spacing:{before:0,after:600}
-  }));
-
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'BRIEF MAESTRO',bold:true,size:80,color:blue,font:'Arial'})],
-    spacing:{before:0,after:100}
-  }));
-
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'DE BRANDING',bold:true,size:80,color:white,font:'Arial'})],
-    spacing:{before:0,after:400}
-  }));
-
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'Documento estrategico de marca',size:22,color:gray,font:'Arial'})],
-    spacing:{before:0,after:200}
-  }));
-
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'Fecha: '+new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'long',year:'numeric'})+'   |   Secciones completadas: '+Object.keys(SEC).filter(function(k){return SEC[k]===2;}).length+'/11',size:18,color:gray,font:'Arial'})],
-    spacing:{before:0,after:2000}
-  }));
-
-  // Page break after cover
-  children.push(new D.Paragraph({
-    children:[new D.PageBreak()]
-  }));
-
-  // ── TABLE OF CONTENTS header
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'CONTENIDO DEL BRIEF',bold:true,size:28,color:blue,font:'Arial'})],
-    spacing:{before:0,after:200},
-    border:{bottom:{style:D.BorderStyle.SINGLE,size:4,color:blue,space:4}}
-  }));
-
-  sections.forEach(function(sec){
-    children.push(new D.Paragraph({
-      children:[
-        new D.TextRun({text:'SECCION '+sec.id+'  ',bold:true,size:20,color:blue,font:'Arial'}),
-        new D.TextRun({text:sec.name+'  ('+sec.items.length+' respuestas)',size:20,color:'CCCCCC',font:'Arial'})
-      ],spacing:{before:80,after:80}
-    }));
-  });
-
-  if(conclusionText){
-    children.push(new D.Paragraph({
-      children:[new D.TextRun({text:'CONCLUSION ESTRATEGICA DE MARCA',bold:true,size:20,color:blue,font:'Arial'})],
-      spacing:{before:80,after:80}
-    }));
-  }
-
-  children.push(new D.Paragraph({children:[new D.PageBreak()]}));
-
-  // ── SECTIONS
-  sections.forEach(function(sec){
-    // Section header
-    children.push(new D.Paragraph({
-      children:[
-        new D.TextRun({text:'SECCION '+sec.id,bold:true,size:14,color:blue,font:'Arial'}),
-        new D.TextRun({text:'  '+sec.name.toUpperCase(),bold:true,size:22,color:white,font:'Arial'})
-      ],
-      spacing:{before:400,after:200},
-      shading:{type:D.ShadingType.SOLID,color:darkBlue},
-      border:{
-        left:{style:D.BorderStyle.SINGLE,size:24,color:blue,space:6}
-      }
-    }));
-
-    if(sec.items.length===0){
-      children.push(new D.Paragraph({
-        children:[new D.TextRun({text:'Esta seccion no tiene respuestas registradas.',size:20,color:gray,italics:true,font:'Arial'})],
-        spacing:{before:100,after:200}
-      }));
-    }
-
-    sec.items.forEach(function(item,idx){
-      // Question number + text
-      children.push(new D.Paragraph({
-        children:[
-          new D.TextRun({text:(idx+1)+'.  ',bold:true,size:20,color:blue,font:'Arial'}),
-          new D.TextRun({text:item.q.replace(/\*\*/g,''),bold:true,size:20,color:'D1D5DB',font:'Arial'})
-        ],
-        spacing:{before:240,after:100},
-        indent:{left:0}
-      }));
-
-      // Answer box - shaded
-      children.push(new D.Paragraph({
-        children:[
-          new D.TextRun({text:'R/  ',bold:true,size:18,color:blue,font:'Arial'}),
-          new D.TextRun({text:item.a,size:20,color:'7EB3FF',font:'Arial'})
-        ],
-        spacing:{before:60,after:60},
-        shading:{type:D.ShadingType.SOLID,color:'080E1F'},
-        border:{
-          left:{style:D.BorderStyle.SINGLE,size:16,color:blue,space:6},
-          top:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2},
-          bottom:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2},
-          right:{style:D.BorderStyle.SINGLE,size:2,color:'1D4070',space:2}
-        },
-        indent:{left:160,right:160}
-      }));
     });
 
-    // Section separator
-    children.push(new D.Paragraph({
-      children:[new D.TextRun({text:''})],
-      spacing:{before:200,after:0},
-      border:{bottom:{style:D.BorderStyle.SINGLE,size:2,color:'1A1A1A',space:2}}
-    }));
-  });
-
-  // ── CONCLUSION
-  if(conclusionText){
+    // Closing
     children.push(new D.Paragraph({children:[new D.PageBreak()]}));
     children.push(new D.Paragraph({
-      children:[new D.TextRun({text:'CONCLUSION ESTRATEGICA DE MARCA',bold:true,size:28,color:blue,font:'Arial'})],
-      spacing:{before:0,after:300},
-      border:{bottom:{style:D.BorderStyle.SINGLE,size:6,color:blue,space:4}}
+      children:[new D.TextRun({text:'Documento generado por Ruva Estudio',bold:true,size:22,color:'FFFFFF',font:'Arial'})],
+      spacing:{before:200,after:100},
+      shading:{type:D.ShadingType.SOLID,color:'1D4ED8'},
+      indent:{left:200,right:200}
     }));
-    conclusionText.split('\n').forEach(function(line){
-      var t=line.trim().replace(/\*\*/g,'');
-      if(!t)return;
-      children.push(new D.Paragraph({
-        children:[new D.TextRun({text:t,size:22,color:'C8CED8',font:'Arial'})],
-        spacing:{before:100,after:100},
-        shading:{type:D.ShadingType.SOLID,color:'080E1F'},
-        border:{left:{style:D.BorderStyle.SINGLE,size:16,color:blue,space:6}},
-        indent:{left:160,right:160}
-      }));
+    children.push(new D.Paragraph({
+      children:[new D.TextRun({text:'Envia este brief a tu estratega para comenzar a construir tu marca.',size:20,color:'BFDBFE',font:'Arial'})],
+      spacing:{before:80,after:200},
+      shading:{type:D.ShadingType.SOLID,color:'1D4ED8'},
+      indent:{left:200,right:200}
+    }));
+
+    var doc = new D.Document({
+      sections:[{
+        properties:{page:{margin:{top:720,right:720,bottom:720,left:720}}},
+        children:children
+      }]
     });
-  }
 
-  // ── CLOSING
-  children.push(new D.Paragraph({children:[new D.PageBreak()]}));
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'Es momento de enviar este brief al equipo de Ruva Estudio.',bold:true,size:26,color:white,font:'Arial'})],
-    spacing:{before:200,after:200},
-    shading:{type:D.ShadingType.SOLID,color:'1D4ED8'},
-    border:{left:{style:D.BorderStyle.SINGLE,size:24,color:white,space:6}},
-    indent:{left:160,right:160}
-  }));
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'Comparte este documento con tu estratega para comenzar a construir tu marca.',size:20,color:'BFDBFE',font:'Arial'})],
-    spacing:{before:100,after:600},
-    shading:{type:D.ShadingType.SOLID,color:'1D4ED8'},
-    indent:{left:160,right:160}
-  }));
-  children.push(new D.Paragraph({
-    children:[new D.TextRun({text:'RUVA ESTUDIO  —  ruvaestudio.com',size:18,color:gray,font:'Arial'})],
-    spacing:{before:0,after:0},alignment:D.AlignmentType.CENTER
-  }));
-
-  // Build doc
-  var doc=new D.Document({
-    background:{color:'0A0A0A'},
-    sections:[{
-      properties:{
-        page:{
-          margin:{top:720,right:720,bottom:720,left:720},
-          size:{width:12240,height:15840}
-        }
-      },
-      children:children
-    }]
-  });
-
-  D.Packer.toBlob(doc).then(function(blob){
+    D.Packer.toBlob(doc).then(function(blob){
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='BRANDLAB_Brief_Maestro.docx'; a.click();
+      URL.revokeObjectURL(url);
+    }).catch(function(err){
+      console.error('docx error:',err);
+      // Fallback to txt
+      var blob=new Blob([fullText],{type:'text/plain;charset=utf-8'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
+      URL.revokeObjectURL(url);
+    });
+  } catch(err){
+    console.error('buildDocx error:',err);
+    var blob=new Blob([fullText],{type:'text/plain;charset=utf-8'});
     var url=URL.createObjectURL(blob);
     var a=document.createElement('a');
-    a.href=url;a.download='BRANDLAB_Brief_Maestro.docx';a.click();
+    a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
     URL.revokeObjectURL(url);
-  }).catch(function(err){
-    alert('Error al generar el documento: '+err.message);
-  });
+  }
 }
 
 // ── SHOW COMPLETION CARD
