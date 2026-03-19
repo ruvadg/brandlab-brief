@@ -344,8 +344,15 @@ async function callAPI(userText){
     var txt=data.text||'Sin respuesta.';
     hist.push({role:'assistant',content:txt});
     rmTyping();addMsg('a',txt);
-    if(txt.includes('===FORMULARIO MAESTRO===')||(/secci[o\xf3]n\s+k/i.test(txt)&&/complet|finaliz/i.test(txt))){
-      setTimeout(showCelebration,800);
+    // Detect form completion — multiple possible signals
+    var isComplete = txt.includes('===FORMULARIO MAESTRO===') ||
+      txt.includes('===CONCLUSION DE MARCA===') ||
+      txt.includes('===JSON===') ||
+      txt.includes('Tu formulario esta completo') ||
+      txt.includes('equipo de Ruva Estudio') ||
+      (/secci[oó]n\s+k/i.test(txt) && /complet|finaliz/i.test(txt));
+    if(isComplete){
+      setTimeout(function(){ showCompletion(txt); }, 600);
     }
   }catch(e){rmTyping();addMsg('a','Error: '+e.message+'. Intenta de nuevo.');}
   busy=false;
@@ -405,23 +412,60 @@ function saveProgress(){
   a.href=url;a.download='BRANDLAB_Progreso.txt';a.click();
   URL.revokeObjectURL(url);
 }
-function showCelebration(){
-  document.getElementById('ia').style.display='none';
-  document.getElementById('celScreen').classList.add('show');
+function showCompletion(txt){
+  // Mark all sections done
   document.getElementById('pf').style.width='100%';
   document.querySelectorAll('.sp').forEach(function(p){p.classList.remove('on');p.classList.add('ok');});
+
+  // Hide input area
+  document.getElementById('ia').style.display='none';
+
+  // Add download card directly in chat
+  var ch = document.getElementById('ch');
+  var card = document.createElement('div');
+  card.id = 'dlCard';
+  card.style.cssText = 'background:#0a1628;border:1px solid #1d4070;border-left:3px solid #3b82f6;border-radius:6px;padding:18px 16px;display:flex;flex-direction:column;gap:12px;animation:sIn .5s ease;margin-top:4px';
+  card.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div style="font-size:22px">&#127881;</div>' +
+      '<div>' +
+        '<div style="font-family:monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#3b82f6;margin-bottom:2px">Formulario completado</div>' +
+        '<div style="font-size:14px;font-weight:800;color:#f0ede6">Tu Brief Maestro esta listo</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:12px;color:#555;line-height:1.6">Descarga tu progreso y envialo al equipo de <strong style="color:#93c5fd">Ruva Estudio</strong> para comenzar a construir tu marca.</div>' +
+    '<button onclick="saveProgress()" style="background:#3b82f6;color:#fff;border:none;font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:13px 20px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;gap:8px;-webkit-tap-highlight-color:transparent;width:100%">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>' +
+      'Descargar Brief completo (.txt)' +
+    '</button>' +
+    '<div style="font-family:monospace;font-size:9px;color:#2a2a2a;text-align:center">El archivo incluye todas tus respuestas y la conclusion de marca</div>';
+  ch.appendChild(card);
+  ch.scrollTop = ch.scrollHeight;
+
+  // Launch confetti overlay briefly
+  launchConfetti();
+}
+
+function showCelebration(){ showCompletion(''); }
+
+function launchConfetti(){
   var cv=document.getElementById('cc'),ctx=cv.getContext('2d');
-  cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;
+  cv.width=cv.offsetWidth||window.innerWidth;
+  cv.height=cv.offsetHeight||300;
+  cv.style.position='fixed';cv.style.top='0';cv.style.left='0';
+  cv.style.width='100%';cv.style.height='100%';
+  cv.style.pointerEvents='none';cv.style.zIndex='9999';
+  document.body.appendChild(cv);
   var ps=[],cols=['#3b82f6','#60a5fa','#93c5fd','#1d4ed8','#fff','#bfdbfe'];
-  for(var i=0;i<100;i++)ps.push({x:Math.random()*cv.width,y:Math.random()*cv.height-cv.height,w:Math.random()*8+3,h:Math.random()*12+5,r:Math.random()*Math.PI*2,vx:(Math.random()-.5)*3,vy:Math.random()*3+2,vr:(Math.random()-.5)*.15,c:cols[Math.floor(Math.random()*cols.length)]});
+  for(var i=0;i<120;i++)ps.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height,w:Math.random()*8+3,h:Math.random()*12+5,r:Math.random()*Math.PI*2,vx:(Math.random()-.5)*3,vy:Math.random()*4+2,vr:(Math.random()-.5)*.15,c:cols[Math.floor(Math.random()*cols.length)]});
   var fr=0;
   function draw(){
     ctx.clearRect(0,0,cv.width,cv.height);
-    ps.forEach(function(p){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;ctx.globalAlpha=.8;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;if(p.y>cv.height)p.y=-p.h;});
-    if(++fr<180)requestAnimationFrame(draw);
+    ps.forEach(function(p){ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;ctx.globalAlpha=.75;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;});
+    if(++fr<200)requestAnimationFrame(draw);
+    else{ cv.style.display='none'; }
   }
   draw();
-  document.getElementById('ch').scrollTop=document.getElementById('ch').scrollHeight;
 }
 </script>
 </body>
