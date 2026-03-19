@@ -1,0 +1,11 @@
+{
+  "name": "brandlab-brief-wizard",
+  "version": "1.0.0",
+  "description": "BRANDLAB Brief Wizard — Formulario Maestro de Branding con IA",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<title>BRANDLAB — Brief Wizard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0a0a0a;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;background:#0a0a0a;color:#f0ede6;font-family:'Syne','Segoe UI',system-ui,sans-serif;overflow:hidden}
+
+/* HEADER */
+.hd{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:52px;border-bottom:1px solid #1a1a1a;flex-shrink:0}
+.lw{display:flex;align-items:center;gap:9px}
+.mk{width:22px;height:22px;background:#c8f135;clip-path:polygon(0 0,100% 0,100% 60%,60% 100%,0 100%);flex-shrink:0}
+.lt{font-size:12px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}
+.ls{font-size:9px;color:#444;font-family:monospace;letter-spacing:.08em}
+.st{display:flex;align-items:center;gap:5px;font-family:monospace;font-size:10px;color:#555}
+.sd{width:6px;height:6px;border-radius:50%;background:#c8f135;animation:pu 2s infinite}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
+.dl-btn{display:flex;align-items:center;gap:5px;background:transparent;border:1px solid #2a2a2a;color:#444;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;cursor:not-allowed;border-radius:3px;transition:all .2s}
+.dl-btn.ready{background:#c8f135;border-color:#c8f135;color:#000;cursor:pointer}
+
+/* PROGRESS */
+.pb{height:3px;background:#1a1a1a;flex-shrink:0}
+.pf{height:100%;background:#c8f135;width:0%;transition:width .6s}
+
+/* SECTIONS STRIP */
+.sc{display:flex;overflow-x:auto;padding:7px 14px;border-bottom:1px solid #1a1a1a;flex-shrink:0;gap:4px;scrollbar-width:none}
+.sc::-webkit-scrollbar{display:none}
+.sp{flex-shrink:0;font-family:monospace;font-size:10px;font-weight:700;padding:4px 8px;border-radius:3px;background:#161616;color:#2e2e2e;border:1px solid #1a1a1a;transition:all .2s}
+.sp.on{background:#c8f135;color:#000;border-color:#c8f135}
+.sp.ok{background:#1a2000;color:#c8f135;border-color:#3a5000}
+
+/* CHAT */
+.ch{flex:1;overflow-y:auto;padding:18px 14px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+.ch::-webkit-scrollbar{width:3px}
+.ch::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:2px}
+
+/* WELCOME */
+.wl{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;flex:1;gap:20px;padding:20px 12px;min-height:300px}
+.wb{font-family:monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:#c8f135;background:#1a2000;border:1px solid #3a5000;padding:4px 12px;border-radius:2px}
+.wh{font-size:32px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:#f0ede6}
+.wa{color:#c8f135}
+.wp{font-size:13px;color:#555;line-height:1.7;max-width:300px}
+.ws{background:#c8f135;color:#000;border:none;font-family:inherit;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:13px 26px;cursor:pointer;border-radius:4px;box-shadow:0 0 24px rgba(200,241,53,.15);-webkit-tap-highlight-color:transparent}
+.wt{font-family:monospace;font-size:10px;color:#2a2a2a}
+
+/* MESSAGES */
+.m{display:flex;gap:9px;width:100%}
+.m.u{flex-direction:row-reverse;align-self:flex-end;max-width:90%}
+.m.a{align-self:flex-start;max-width:100%}
+.av{width:26px;height:26px;border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;margin-top:2px}
+.av.a{background:#c8f135;color:#000}
+.av.u{background:#1a1a1a;color:#555;border:1px solid #252525}
+.mi{flex:1;min-width:0}
+.ml{font-family:monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.ml.a{color:#c8f135}
+.ml.u{color:#333}
+.bb{padding:11px 13px;border-radius:4px;font-size:13px;line-height:1.65;word-break:break-word}
+.bb.a{background:#111;border:1px solid #1a1a1a;color:#c8ced8}
+.bb.u{background:#0c1400;border:1px solid #253300;color:#b8e030;font-family:monospace}
+.bb.a strong{color:#e8f8a0;font-weight:700}
+.bb.a .ck{color:#c8f135;font-weight:700;display:block;margin:6px 0 3px;font-size:12px}
+.bb.a .stag{display:inline-block;background:#1a2000;border:1px solid #3a5000;color:#c8f135;font-family:monospace;font-size:9px;padding:2px 8px;border-radius:2px;margin-bottom:7px;letter-spacing:.1em;text-transform:uppercase}
+
+/* TYPING */
+.ty{display:flex;gap:4px;padding:11px 14px;background:#111;border:1px solid #1a1a1a;border-radius:4px;width:fit-content}
+.ty span{width:5px;height:5px;border-radius:50%;background:#444;display:inline-block}
+.ty span:nth-child(1){animation:bo 1.2s 0ms infinite}
+.ty span:nth-child(2){animation:bo 1.2s 200ms infinite}
+.ty span:nth-child(3){animation:bo 1.2s 400ms infinite}
+@keyframes bo{0%,80%,100%{transform:translateY(0);opacity:.3}40%{transform:translateY(-4px);opacity:1}}
+
+/* INPUT */
+.ia{border-top:1px solid #1a1a1a;padding:10px 14px 20px;padding-bottom:calc(10px + env(safe-area-inset-bottom));background:#0a0a0a;flex-shrink:0}
+.cs{display:flex;gap:5px;margin-bottom:9px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.cs::-webkit-scrollbar{display:none}
+.ci{flex-shrink:0;font-family:monospace;font-size:11px;color:#555;background:#111;border:1px solid #1a1a1a;padding:7px 13px;border-radius:3px;cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:all .15s}
+.ci:active{background:#1a2000;color:#c8f135;border-color:#3a5000}
+.iw{display:flex;gap:9px;align-items:flex-end;background:#111;border:1px solid #222;border-radius:6px;padding:10px 12px;transition:border-color .2s}
+.iw:focus-within{border-color:#c8f135}
+.tx{flex:1;background:transparent;border:none;outline:none;font-family:inherit;font-size:16px;color:#f0ede6;resize:none;min-height:24px;max-height:96px;line-height:1.5;-webkit-text-size-adjust:100%}
+.tx::placeholder{color:#2a2a2a}
+.sb{width:42px;height:42px;background:#1a1a1a;border:none;border-radius:4px;cursor:not-allowed;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.sb.on{background:#c8f135;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="hd">
+    <div class="lw">
+      <div class="mk"></div>
+      <div><div class="lt">BRANDLAB</div><div class="ls">Brief Wizard · IA</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="st"><div class="sd"></div>Claude activo</div>
+      <button class="dl-btn" id="dlBtn" onclick="downloadBrief()">↓ Descargar</button>
+    </div>
+  </div>
+
+  <div class="pb"><div class="pf" id="pf"></div></div>
+
+  <div class="sc">
+    <div class="sp" data-s="A">A</div><div class="sp" data-s="B">B</div>
+    <div class="sp" data-s="C">C</div><div class="sp" data-s="D">D</div>
+    <div class="sp" data-s="E">E</div><div class="sp" data-s="F">F</div>
+    <div class="sp" data-s="G">G</div><div class="sp" data-s="H">H</div>
+    <div class="sp" data-s="I">I</div><div class="sp" data-s="J">J</div>
+    <div class="sp" data-s="K">K</div>
+  </div>
+
+  <div class="ch" id="ch">
+    <div class="wl" id="wl">
+      <div class="wb">Brief Wizard · Powered by Claude</div>
+      <div><div class="wh">Tu marca</div><div class="wh"><span class="wa">empieza aquí.</span></div></div>
+      <div class="wp">Responde el Formulario Maestro de Branding con guía de IA. Cada respuesta construye la base estratégica de tu marca.</div>
+      <button class="ws" onclick="startForm()">▶ Iniciar formulario</button>
+      <div class="wt">Tus respuestas quedan guardadas en esta sesión</div>
+    </div>
+  </div>
+
+  <div class="ia" id="ia" style="display:none">
+    <div class="cs">
+      <div class="ci" onclick="sendMsg('CONTINUAR')">Continuar</div>
+      <div class="ci" onclick="sendMsg('SALTAR')">Saltar</div>
+      <div class="ci" onclick="sendMsg('RESUMEN')">Resumen</div>
+      <div class="ci" onclick="sendMsg('No sé, necesito ayuda')">No sé</div>
+      <div class="ci" onclick="sendMsg('FINALIZAR')">Finalizar</div>
+    </div>
+    <div class="iw">
+      <textarea class="tx" id="tx" placeholder="Escribe tu respuesta…" rows="1"
+        oninput="resizeTx(this);toggleSend()"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();doSend()}"
+      ></textarea>
+      <button class="sb" id="sb" onclick="doSend()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" width="15" height="15">
+          <path id="sico" stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" stroke="#333"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+var hist=[];
+var busy=false;
+var finalContent='';
+var SEC={A:0,B:0,C:0,D:0,E:0,F:0,G:0,H:0,I:0,J:0,K:0};
+
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function fmt(text){
+  return text.split('\n').map(function(l){
+    if(/^\[SECCIÓN [A-Z]/.test(l)) return '<span class="stag">'+l.replace(/[\[\]]/g,'')+'</span><br>';
+    if(l.startsWith('✓')||l.startsWith('===')||l.startsWith('---')) return '<span class="ck">'+esc(l)+'</span>';
+    if(l.includes('**')){
+      var p=l.split(/\*\*([^*]+)\*\*/g).map(function(x,j){return j%2?'<strong>'+esc(x)+'</strong>':esc(x);}).join('');
+      return '<p style="margin:4px 0">'+p+'</p>';
+    }
+    if(l.startsWith('- ')||l.startsWith('• ')) return '<p style="margin:3px 0 3px 10px;color:#9aa8b8">· '+esc(l.slice(2))+'</p>';
+    if(!l.trim()) return '<div style="height:7px"></div>';
+    return '<p style="margin:3px 0">'+esc(l)+'</p>';
+  }).join('');
+}
+
+function addMsg(role,text){
+  var ch=document.getElementById('ch');
+  var d=document.createElement('div');
+  d.className='m '+role;
+  d.innerHTML='<div class="av '+role+'">'+(role==='a'?'BL':'TÚ')+'</div>'+
+    '<div class="mi"><div class="ml '+role+'">'+(role==='a'?'BRANDLAB IA':'TÚ')+'</div>'+
+    '<div class="bb '+role+'">'+(role==='a'?fmt(text):esc(text))+'</div></div>';
+  ch.appendChild(d);
+  ch.scrollTop=ch.scrollHeight;
+  if(role==='a') detectSections(text);
+}
+
+function showTyping(){
+  var ch=document.getElementById('ch');
+  var d=document.createElement('div');
+  d.className='m a'; d.id='typ';
+  d.innerHTML='<div class="av a">BL</div><div class="mi">'+
+    '<div class="ml a">BRANDLAB IA</div>'+
+    '<div class="ty"><span></span><span></span><span></span></div></div>';
+  ch.appendChild(d); ch.scrollTop=ch.scrollHeight;
+}
+
+function rmTyping(){var t=document.getElementById('typ');if(t)t.remove();}
+
+async function callAPI(userText){
+  if(busy) return;
+  busy=true;
+  hist.push({role:'user',content:userText});
+  showTyping();
+  try{
+    var r=await fetch('/api/chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:hist})
+    });
+    var data=await r.json();
+    if(!r.ok) throw new Error(data.error||'Error');
+    var txt=data.text||'Sin respuesta.';
+    hist.push({role:'assistant',content:txt});
+    rmTyping(); addMsg('a',txt);
+    if(txt.includes('===FORMULARIO MAESTRO===')||txt.includes('===JSON===')){
+      finalContent=txt;
+      document.getElementById('dlBtn').classList.add('ready');
+    }
+  }catch(e){
+    rmTyping();
+    addMsg('a','⚠️ Error: '+e.message+'. Intenta de nuevo.');
+  }
+  busy=false;
+  document.getElementById('tx').focus();
+}
+
+function startForm(){
+  document.getElementById('wl').style.display='none';
+  document.getElementById('ia').style.display='block';
+  addMsg('u','Iniciar formulario');
+  callAPI('INICIAR FORMULARIO');
+}
+
+function sendMsg(text){
+  addMsg('u',text);
+  callAPI(text);
+}
+
+function doSend(){
+  var tx=document.getElementById('tx');
+  var v=tx.value.trim();
+  if(!v||busy) return;
+  tx.value=''; tx.style.height='auto';
+  document.getElementById('sb').classList.remove('on');
+  document.getElementById('sico').setAttribute('stroke','#333');
+  addMsg('u',v); callAPI(v);
+}
+
+function resizeTx(el){
+  el.style.height='auto';
+  el.style.height=Math.min(el.scrollHeight,96)+'px';
+}
+
+function toggleSend(){
+  var v=document.getElementById('tx').value.trim();
+  document.getElementById('sb').classList.toggle('on',!!v);
+  document.getElementById('sico').setAttribute('stroke',v?'#000':'#333');
+}
+
+function detectSections(t){
+  Object.keys(SEC).forEach(function(k){
+    if(new RegExp('SECCIÓN '+k+'[\\s—\\-]','i').test(t)&&SEC[k]===0) SEC[k]=1;
+    if(new RegExp('sección '+k,'i').test(t)&&/completada|pasamos a|avanzamos/i.test(t)) SEC[k]=2;
+  });
+  var done=0,act=0;
+  Object.keys(SEC).forEach(function(k){
+    var p=document.querySelector('[data-s="'+k+'"]');
+    if(!p) return;
+    p.classList.remove('on','ok');
+    if(SEC[k]===2){p.classList.add('ok');done++;}
+    else if(SEC[k]===1){p.classList.add('on');act++;}
+  });
+  document.getElementById('pf').style.width=Math.round(((done+act*.5)/11)*100)+'%';
+}
+
+function downloadBrief(){
+  if(!finalContent) return;
+  var txt='BRANDLAB — FORMULARIO MAESTRO DE BRANDING\n'+'='.repeat(50)+'\n';
+  txt+='Generado: '+new Date().toLocaleDateString('es-ES',{year:'numeric',month:'long',day:'numeric'})+'\n\n';
+  txt+=finalContent;
+  var blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
