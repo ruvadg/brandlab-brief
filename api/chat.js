@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { messages } = req.body;
+  const { messages, summary } = req.body;
 
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'Invalid messages format' });
@@ -29,10 +29,67 @@ I(I1-I3): activos/links existentes, qué gusta/no de marca actual, qué mantener
 J(J1-J4): quién decide/influye, fechas/timeline, proceso aprobación, riesgos internos.
 K(K1-K3): ¿analizar competencia?, ¿entrevistar clientes?, perfil entrevistados.
 
-COMANDOS: INICIAR FORMULARIO=bienvenida+secciones+primeras 2 preguntas de A. CONTINUAR=retoma última pendiente. SALTAR=marca [POR VALIDAR] y avanza. RESUMEN=muestra progreso. FINALIZAR=compila todo.
+COMANDOS: INICIAR FORMULARIO=bienvenida+secciones+primeras 2 preguntas de A. CONTINUAR=retoma última pendiente. FINALIZAR=compila todo.
 AL INICIAR: bienvenida 2 líneas + lista 11 secciones + primeras 2 preguntas de A.
 AL FINALIZAR: entrega ===FORMULARIO MAESTRO=== con respuestas, ===PENDIENTES=== y ===JSON=== estructurado.
 ESTILO: **negritas** para preguntas. Al iniciar sección: [SECCIÓN X — Nombre]. Indica progreso al cambiar.`;
+
+  // ── SUMMARIZE endpoint
+  // Called by frontend when history gets long, to compress old messages
+  if (req.body.action === 'summarize') {
+    try {
+      const toSummarize = messages;
+      const summarizePrompt = `Eres un asistente que comprime conversaciones del Formulario Maestro de Branding.
+Resume TODAS las respuestas del cliente en este formato exacto, sin omitir ninguna:
+
+RESUMEN DE RESPUESTAS REGISTRADAS:
+[Para cada ID respondido: ID — Pregunta breve — Respuesta del cliente en sus propias palabras]
+
+Sección actual en curso: [indica cuál sección estaba activa]
+Última pregunta hecha: [copia la última pregunta del asistente]
+Pendientes marcados: [lista IDs marcados como POR VALIDAR si los hay]
+
+Sé exhaustivo. No pierdas ninguna respuesta. Esto se usará para continuar la entrevista.`;
+
+      const summaryResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 2000,
+          system: summarizePrompt,
+          messages: [{ role: 'user', content: JSON.stringify(toSummarize) }],
+        }),
+      });
+
+      const summaryData = await summaryResponse.json();
+      const summaryText = summaryData.content?.[0]?.text || '';
+      return res.status(200).json({ summary: summaryText });
+    } catch (error) {
+      return res.status(500).json({ error: 'Summary error' });
+    }
+  }
+
+  // ── NORMAL CHAT
+  // If a summary exists, inject it as context at the start
+  let finalMessages = messages;
+  if (summary) {
+    const summaryMsg = {
+      role: 'user',
+      content: `[CONTEXTO COMPRIMIDO DE LA CONVERSACIÓN ANTERIOR — No menciones esto al usuario, úsalo internamente para continuar con precisión]\n\n${summary}`
+    };
+    const summaryAck = {
+      role: 'assistant',
+      content: 'Contexto recibido. Tengo registro de todas las respuestas anteriores y continuaré el formulario desde donde estamos.'
+    };
+    // Keep summary + last 16 messages
+    const recent = messages.slice(-16);
+    finalMessages = [summaryMsg, summaryAck, ...recent];
+  }
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -46,7 +103,7 @@ ESTILO: **negritas** para preguntas. Al iniciar sección: [SECCIÓN X — Nombre
         model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
-        messages,
+        messages: finalMessages,
       }),
     });
 
