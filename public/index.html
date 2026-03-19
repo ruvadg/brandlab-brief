@@ -128,7 +128,7 @@ html,body{height:100%;background:#0a0a0a;overflow:hidden}
   </div>
   <div class="ch" id="ch">
     <div class="wl" id="wl">
-      <div class="wb">Brief Wizard &middot; Powered by Claude</div>
+      <div class="wb">Brief Wizard &middot; Powered by Ruva Estudio</div>
       <div><div class="wh">Tu marca</div><div class="wh"><span class="wa">empieza aqui.</span></div></div>
       <div class="wp">Responde el Formulario Maestro de Branding con guia de IA. Cada respuesta construye la base estrategica de tu marca.</div>
       <div class="btn-group">
@@ -210,11 +210,47 @@ function resumeForm(){
   var isPaste=document.getElementById('tabPaste').classList.contains('active');
   var content=isPaste?document.getElementById('pasteArea').value.trim():uploadedText;
   if(!content)return;
+
+  // Parse section states from saved file if present
+  var secMatch = content.match(/SECCIONES_STATE:({[^}\n]+})/);
+  if(secMatch){
+    try{
+      var savedSec = JSON.parse(secMatch[1]);
+      Object.keys(savedSec).forEach(function(k){ if(SEC[k]!==undefined) SEC[k]=savedSec[k]; });
+      updUI();
+    }catch(e){}
+  }
+
+  // Extract just the conversation pairs cleanly
+  var convLines = [];
+  var blocks = content.split(/>>CLIENTE\[\d+\]/);
+  blocks.forEach(function(block){
+    if(!block.trim()) return;
+    var parts = block.split(/<<ASISTENTE\[\d+\]/);
+    if(parts[0] && parts[0].trim()) convLines.push('Cliente: '+parts[0].trim());
+    if(parts[1]) convLines.push('Asistente: '+parts[1].replace(/---/g,'').trim());
+  });
+
+  // If old format (no markers), use as-is
+  var cleanConv = convLines.length > 0 ? convLines.join('\n\n') : content;
+
   document.getElementById('contScreen').classList.remove('show');
   document.getElementById('ia').style.display='block';
   document.getElementById('saveBtn').classList.add('show');
-  addMsg('u','Continuar formulario con progreso guardado');
-  callAPI('REANUDAR FORMULARIO. Analiza el progreso del usuario, identifica donde se quedo y continua desde ahi sin repetir lo ya respondido. Saluda brevemente y confirma que secciones completo.\n\nPROGRESO:\n'+content);
+  addMsg('u','Continuar formulario guardado');
+
+  // Build a crystal-clear system message for Claude
+  var resumePrompt = 'INSTRUCCION DE REANUDACION:\n'+
+    'El usuario ya habia completado parte del Formulario Maestro de Branding.\n'+
+    'Tu tarea: (1) Analiza el progreso abajo, (2) identifica la ULTIMA pregunta que hiciste y que NO tiene respuesta aun, (3) continua EXACTAMENTE desde esa pregunta.\n'+
+    'PROHIBIDO: repetir preguntas ya respondidas, pedir informacion que ya esta en el historial, confundir las respuestas del asistente con las del cliente.\n'+
+    'Las lineas que empiezan con "Cliente:" son respuestas del usuario.\n'+
+    'Las lineas que empiezan con "Asistente:" son tus preguntas anteriores.\n'+
+    'Saluda en 1 linea, confirma brevemente que secciones estan completas, y haz la siguiente pregunta pendiente.\n\n'+
+    '=== HISTORIAL DE LA SESION ANTERIOR ===\n'+
+    cleanConv;
+
+  callAPI(resumePrompt);
 }
 function startForm(){
   document.getElementById('wl').style.display='none';
@@ -331,12 +367,38 @@ function tSend(){
   document.getElementById('sico').setAttribute('stroke',v?'#fff':'#333');
 }
 function saveProgress(){
-  var lines=['BRANDLAB - PROGRESO DEL FORMULARIO MAESTRO DE BRANDING','='.repeat(55),'Guardado: '+new Date().toLocaleString('es-ES'),'','INSTRUCCIONES PARA CONTINUAR:','1. Guarda este archivo.','2. Abre la app y pulsa Continuar formulario.','3. Sube este archivo o pega su contenido.','','='.repeat(55),'HISTORIAL','='.repeat(55),''];
-  hist.forEach(function(m){
-    if(m.role==='user'&&m.content!=='INICIAR FORMULARIO'&&!m.content.startsWith('REANUDAR')&&!m.content.startsWith('[NOTA')){lines.push('[CLIENTE]');lines.push(m.content);lines.push('');}
-    else if(m.role==='assistant'){lines.push('[BRANDLAB IA]');lines.push(m.content);lines.push('-'.repeat(40));lines.push('');}
+  // Build structured progress file with clear section states
+  var secState = JSON.stringify(SEC);
+  var lines = [
+    'BRANDLAB_PROGRESS_V2',
+    '='.repeat(55),
+    'Guardado: '+new Date().toLocaleString('es-ES'),
+    'SECCIONES_STATE:'+secState,
+    '='.repeat(55),
+    'INSTRUCCIONES: Abre la app, pulsa "Continuar formulario" y sube o pega este archivo.',
+    '='.repeat(55),
+    'CONVERSACION_COMPLETA',
+    '='.repeat(55),
+    ''
+  ];
+  // Include full conversation with clear role markers and IDs
+  hist.forEach(function(m,i){
+    if(m.role==='user'&&m.content!=='INICIAR FORMULARIO'&&!m.content.startsWith('REANUDAR')&&!m.content.startsWith('[NOTA')){
+      lines.push('>>CLIENTE['+i+']');
+      lines.push(m.content);
+      lines.push('');
+    } else if(m.role==='assistant'){
+      lines.push('<<ASISTENTE['+i+']');
+      lines.push(m.content);
+      lines.push('---');
+      lines.push('');
+    }
   });
-  if(cachedSummary){lines.push('='.repeat(55));lines.push('RESUMEN COMPRIMIDO');lines.push(cachedSummary);}
+  if(cachedSummary){
+    lines.push('='.repeat(55));
+    lines.push('RESUMEN_COMPRIMIDO');
+    lines.push(cachedSummary);
+  }
   var blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
