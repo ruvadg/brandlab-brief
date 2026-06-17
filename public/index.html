@@ -382,39 +382,48 @@ function downloadFinalDocx(){
   // Show loading state on button
   var btn = document.getElementById('hdrDlBtn');
   var cardBtn = document.querySelector('#dlCard button');
-  var originalText = btn ? btn.innerHTML : '';
   if(btn) btn.innerHTML = '<span style="animation:pu 1s infinite;display:inline-block">&#8635;</span> Generando...';
   if(cardBtn) cardBtn.textContent = 'Generando documento...';
 
-  // Call compile endpoint — Claude structures all Q&A
+  // The complete verbatim transcript is ALWAYS available and complete — never depends on the API
+  var transcript = buildTranscript();
+  var delivered = false;
+  function deliver(content){
+    if(delivered) return; delivered = true;
+    var blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'BRANDLAB_Brief_Maestro.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    if(btn) btn.innerHTML = '&#10003; Descargado';
+    if(cardBtn) cardBtn.textContent = '✓ Descargado';
+  }
+
+  // Best-effort: ask Claude to structure the brief, but never let it block the download.
+  // If it doesn't respond within 30s, deliver the complete transcript on its own.
+  var ctrl = new AbortController();
+  var timer = setTimeout(function(){ ctrl.abort(); }, 30000);
+
   fetch('/api/chat', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ action: 'compile', messages: fullHist })
+    body: JSON.stringify({ action: 'compile', messages: fullHist }),
+    signal: ctrl.signal
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    if(data.text){
-      var content = data.text + '\n\n\n' + buildTranscript();
-      var blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'BRANDLAB_Brief_Maestro.txt';
-      a.click();
-      URL.revokeObjectURL(url);
-      if(btn) btn.innerHTML = '&#10003; Descargado';
-      if(cardBtn) cardBtn.textContent = '✓ Descargado';
+    clearTimeout(timer);
+    if(data && data.text){
+      deliver(data.text + '\n\n\n' + transcript);
     } else {
-      throw new Error(data.error || 'Sin contenido');
+      deliver('BRANDLAB — BRIEF MAESTRO DE BRANDING\n\n' + transcript);
     }
   })
-  .catch(function(err){
-    console.error('Download error:', err);
-    // Fallback: raw conversation
-    fallbackTxt();
-    if(btn) btn.innerHTML = originalText;
-    if(cardBtn) cardBtn.textContent = 'Descargar Brief (.txt)';
+  .catch(function(){
+    clearTimeout(timer);
+    deliver('BRANDLAB — BRIEF MAESTRO DE BRANDING\n\n' + transcript);
   });
 }
 
@@ -440,15 +449,6 @@ function buildTranscript(){
     }
   });
   return lines.join('\n');
-}
-
-function fallbackTxt(){
-  var content = 'BRANDLAB — BRIEF MAESTRO DE BRANDING\n\n' + buildTranscript();
-  var blob = new Blob([content], {type:'text/plain;charset=utf-8'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href=url; a.download='BRANDLAB_Brief_Maestro.txt'; a.click();
-  URL.revokeObjectURL(url);
 }
 
 // ── SHOW COMPLETION CARD
